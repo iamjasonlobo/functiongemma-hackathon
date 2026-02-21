@@ -32,16 +32,23 @@ def generate_cactus(messages, tools):
     try:
         raw = json.loads(raw_str)
     except json.JSONDecodeError:
+        print(f"  [CACTUS] JSON parse failed | raw: {raw_str[:300]}")
         return {
             "function_calls": [],
             "total_time_ms": 0,
             "confidence": 0,
         }
 
+    calls = raw.get("function_calls", [])
+    conf = raw.get("confidence", 0)
+    resp = raw.get("response", "")
+    if not calls or conf < 0.5:
+        print(f"  [CACTUS] conf={conf:.2f} calls={json.dumps(calls)} response={repr(resp)[:200]}")
+
     return {
-        "function_calls": raw.get("function_calls", []),
+        "function_calls": calls,
         "total_time_ms": raw.get("total_time_ms", 0),
-        "confidence": raw.get("confidence", 0),
+        "confidence": conf,
     }
 
 
