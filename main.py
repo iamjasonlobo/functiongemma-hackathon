@@ -72,7 +72,7 @@ def generate_cloud(messages, tools):
     start_time = time.time()
 
     gemini_response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash-lite",
         contents=contents,
         config=types.GenerateContentConfig(tools=gemini_tools),
     )
@@ -96,7 +96,21 @@ def generate_cloud(messages, tools):
 
 def generate_hybrid(messages, tools, confidence_threshold=0.99):
     """Baseline hybrid inference strategy; fall back to cloud if Cactus Confidence is below threshold."""
+    # --- Test overrides: flip to True to force a single path ---
+    FORCE_CLOUD = True   # skip on-device, route everything to cloud
+    FORCE_CACTUS = False  # skip cloud fallback, always return on-device
+    # ------------------------------------------------------------
+
+    if FORCE_CLOUD:
+        cloud = generate_cloud(messages, tools)
+        cloud["source"] = "cloud (forced)"
+        return cloud
+
     local = generate_cactus(messages, tools)
+
+    if FORCE_CACTUS:
+        local["source"] = "on-device (forced)"
+        return local
 
     if local["confidence"] >= confidence_threshold:
         local["source"] = "on-device"
