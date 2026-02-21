@@ -67,14 +67,51 @@ def generate_cloud(messages, tools):
         ])
     ]
 
-    contents = [m["content"] for m in messages if m["role"] == "user"]
+    # Dynamically build system instruction from tool context per Google best practices:
+    # "Provide context for the model" + "Give instructions on how and when to use functions"
+    # See: https://ai.google.dev/gemini-api/docs/function-calling#best-practices
+    tool_descriptions = []
+    for t in tools:
+        params = t["parameters"]["properties"]
+        param_strs = []
+        for k, v in params.items():
+            param_strs.append(f"  - {k} ({v['type']}): {v.get('description', '')}")
+        tool_descriptions.append(f"- {t['name']}: {t['description']}\n" + "\n".join(param_strs))
+
+    system_instruction = (
+        "You are a helpful function-calling assistant. "
+        "Analyze the user's request and determine which function(s) to call with the correct arguments.\n\n"
+        "Available tools:\n"
+        + "\n".join(tool_descriptions) + "\n\n"
+        "Rules:\n"
+        "- Select the correct tool(s) for the user's request.\n"
+        "- Do not make assumptions about parameter values that are not explicitly stated by the user.\n"
+        "- Extract argument values verbatim from the user's words using the fewest words possible.\n"
+        "- For string parameters, omit filler words like 'some', 'a', 'the' and any generic category "
+        "words that merely restate what the function already does.\n"
+        "- When a request involves multiple distinct actions, return a separate function call for each.\n"
+        "- Never merge multiple actions into a single call."
+    )
+
+    # Build proper Content objects per Google's API examples
+    contents = [
+        types.Content(role="user", parts=[types.Part(text=m["content"])])
+        for m in messages if m["role"] == "user"
+    ]
 
     start_time = time.time()
 
     gemini_response = client.models.generate_content(
         model="gemini-2.5-flash-lite",
         contents=contents,
-        config=types.GenerateContentConfig(tools=gemini_tools),
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            tools=gemini_tools,
+            temperature=0,
+            tool_config=types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(mode="ANY"),
+            ),
+        ),
     )
 
     total_time_ms = (time.time() - start_time) * 1000
@@ -83,9 +120,14 @@ def generate_cloud(messages, tools):
     for candidate in gemini_response.candidates:
         for part in candidate.content.parts:
             if part.function_call:
+                args = {}
+                for k, v in part.function_call.args.items():
+                    if isinstance(v, str):
+                        v = v.strip().rstrip(".,;:!?=")
+                    args[k] = v
                 function_calls.append({
                     "name": part.function_call.name,
-                    "arguments": dict(part.function_call.args),
+                    "arguments": args,
                 })
 
     return {
@@ -97,8 +139,8 @@ def generate_cloud(messages, tools):
 def generate_hybrid(messages, tools, confidence_threshold=0.99):
     """Baseline hybrid inference strategy; fall back to cloud if Cactus Confidence is below threshold."""
     # --- Test overrides: flip to True to force a single path ---
-    FORCE_CLOUD = True   # skip on-device, route everything to cloud
-    FORCE_CACTUS = False  # skip cloud fallback, always return on-device
+    FORCE_CLOUD = False   # skip on-device, route everything to cloud
+    FORCE_CACTUS = True  # skip cloud fallback, always return on-device
     # ------------------------------------------------------------
 
     if FORCE_CLOUD:

@@ -424,6 +424,15 @@ def run_benchmark(benchmarks=None):
     for i, r in enumerate(results, 1):
         print(f"  {i:>2} | {r['difficulty']:<10} | {r['name']:<28} | {r['total_time_ms']:>10.2f} | {r['f1']:>5.2f} | {r['source']}")
 
+    # Debug: show predicted vs expected for failing cases
+    failures = [(i, r) for i, r in enumerate(results, 1) if r["f1"] < 1.0]
+    if failures:
+        print(f"\n--- Failed Cases Debug ---")
+        for i, r in failures:
+            print(f"\n  [{i}] {r['name']} (F1={r['f1']:.2f})")
+            print(f"    Expected:  {json.dumps(r['expected'])}")
+            print(f"    Predicted: {json.dumps(r['predicted'])}")
+
     print(f"\n--- Summary ---")
     for difficulty in ["easy", "medium", "hard"]:
         group = [r for r in results if r["difficulty"] == difficulty]
