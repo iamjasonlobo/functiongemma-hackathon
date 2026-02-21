@@ -20,11 +20,10 @@ def generate_cactus(messages, tools):
 
     raw_str = cactus_complete(
         model,
-        [{"role": "system", "content": "You are a function calling assistant. Call ALL required functions for the user's request. Use exact values from the user's message."}] + messages,
+        [{"role": "system", "content": "You are a helpful assistant that can use tools."}] + messages,
         tools=cactus_tools,
         force_tools=True,
         max_tokens=256,
-        tool_rag_top_k=0,
         stop_sequences=["<|im_end|>", "<end_of_turn>"],
     )
 
@@ -73,23 +72,9 @@ def generate_cloud(messages, tools):
     start_time = time.time()
 
     gemini_response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash",
         contents=contents,
-        config=types.GenerateContentConfig(
-            tools=gemini_tools,
-            temperature=0,
-            tool_config=types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(mode='ANY')
-            ),
-            system_instruction=(
-                "You are a precise function-calling router. "
-                "Your job is to translate user requests into function calls. "
-                "Rules: "
-                "1) Identify EVERY action the user wants and call the corresponding function for EACH one. Never skip any action. "
-                "2) Extract argument values as concisely as possible — use the minimal keyword from the user's input, not full phrases. Drop articles and filler words. "
-                "3) Always call functions. Never respond with text."
-            ),
-        ),
+        config=types.GenerateContentConfig(tools=gemini_tools),
     )
 
     total_time_ms = (time.time() - start_time) * 1000
@@ -102,8 +87,6 @@ def generate_cloud(messages, tools):
                     "name": part.function_call.name,
                     "arguments": dict(part.function_call.args),
                 })
-
-    print(f"  [DBG-CLOUD] calls={json.dumps(function_calls)}")
 
     return {
         "function_calls": function_calls,
